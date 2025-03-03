@@ -1,0 +1,4 @@
+  DROP TABLE IF EXISTS tasks;
+  DROP TABLE IF EXISTS task;
+  DROP TABLE IF EXISTS task_data;
+  DROP TABLE IF EXISTS unique_task_key;
