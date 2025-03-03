@@ -183,7 +183,7 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 
 	now := time.Now().UTC()
 
-	nextEventTime := request.MaxStuckTime
+	nextEventTime := request.RunAfterTime
 
 	uuidProvided := request.TaskId != uuid.Nil
 	key := request.Key

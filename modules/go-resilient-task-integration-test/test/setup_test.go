@@ -67,6 +67,8 @@ func (s *IntegrationTestSuite) createKafkaClient(ctx context.Context, opt ...kgo
 	// Construct the Kafka bootstrap server address
 	bootstrapServer := fmt.Sprintf("%s:%s", host, port.Port())
 
+	fmt.Println("Kafka is running at:", bootstrapServer)
+
 	seeds := []string{bootstrapServer}
 	kafkaClient, err := kgo.NewClient(append([]kgo.Opt{kgo.SeedBrokers(seeds...), kgo.AllowAutoTopicCreation()}, opt...)...)
 

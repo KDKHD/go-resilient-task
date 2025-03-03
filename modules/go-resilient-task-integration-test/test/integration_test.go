@@ -55,11 +55,11 @@ func (s *IntegrationTestSuite) TestAddTask() {
 		config.WithDefaultTaskResumer(),
 	)
 
-	configuration.GetTaskResumer().ResumeProcessing()
-	configuration.GetTaskExecutionTrigger().StartTasksProcessing()
+	/* configuration.GetTaskResumer().ResumeProcessing()
+	configuration.GetTaskExecutionTrigger().StartTasksProcessing() */
 
 	for i := 0; i < 100; i++ {
-		addTaskResponse, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "test", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC(), ExpectedQueueTime: time.Second * 120})
+		addTaskResponse, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "test", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
 
 		s.Require().NoError(error)
 
