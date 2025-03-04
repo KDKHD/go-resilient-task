@@ -1,6 +1,7 @@
 go 1.23.5
 
 use (
+	./example/uber-fx
 	./modules/go-resilient-task
 	./modules/go-resilient-task-integration-test
 )

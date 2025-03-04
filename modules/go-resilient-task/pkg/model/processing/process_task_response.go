@@ -35,14 +35,14 @@ func NewProcessTaskResponse(result ProcessTaskResponseResult, code ProcessTaskRe
 	}
 }
 
-func (r ProcessTaskResponse) GetResult() ProcessTaskResponseResult {
-	return r.result
+func (prt ProcessTaskResponse) GetResult() ProcessTaskResponseResult {
+	return prt.result
 }
 
-func (r ProcessTaskResponse) GetCode() ProcessTaskResponseCode {
-	return r.code
+func (ptr ProcessTaskResponse) GetCode() ProcessTaskResponseCode {
+	return ptr.code
 }
 
-func (r ProcessTaskResponse) GetTryAgainTime() time.Time {
-	return r.tryAgainTime
+func (ptr ProcessTaskResponse) GetTryAgainTime() time.Time {
+	return ptr.tryAgainTime
 }

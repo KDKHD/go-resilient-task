@@ -18,10 +18,10 @@ func NewTaskTriggering(task taskmodel.IBaseTask, triggeredAt time.Time) *TaskTri
 	}
 }
 
-func (t *TaskTriggering) GetTask() taskmodel.IBaseTask {
-	return t.task
+func (tt *TaskTriggering) GetTask() taskmodel.IBaseTask {
+	return tt.task
 }
 
-func (t *TaskTriggering) GetTriggeredAt() time.Time {
-	return t.triggeredAt
+func (tt *TaskTriggering) GetTriggeredAt() time.Time {
+	return tt.triggeredAt
 }

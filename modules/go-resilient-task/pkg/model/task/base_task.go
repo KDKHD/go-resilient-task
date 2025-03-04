@@ -26,23 +26,23 @@ func NewBaseTask(id uuid.UUID, version int, taskType string, priority int) *Base
 	}
 }
 
-func (t BaseTask) GetId() uuid.UUID {
-	return t.Id
+func (bt BaseTask) GetId() uuid.UUID {
+	return bt.Id
 }
 
-func (t BaseTask) GetVersion() int {
-	return t.Version
+func (bt BaseTask) GetVersion() int {
+	return bt.Version
 }
 
-func (t BaseTask) GetType() string {
-	return t.Type
+func (bt BaseTask) GetType() string {
+	return bt.Type
 }
 
-func (t BaseTask) GetPriority() int {
-	return t.Priority
+func (bt BaseTask) GetPriority() int {
+	return bt.Priority
 }
 
-func (t *BaseTask) IncrementVersion() IBaseTask {
-	t.Version++
-	return t
+func (bt *BaseTask) IncrementVersion() IBaseTask {
+	bt.Version++
+	return bt
 }

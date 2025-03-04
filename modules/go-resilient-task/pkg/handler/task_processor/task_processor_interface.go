@@ -20,6 +20,12 @@ type ITaskProcessor interface {
 	Process(task taskmodel.ITask) (ProcessResult, error)
 }
 
+type TaskProcessorFunc func(task taskmodel.ITask) (ProcessResult, error)
+
+func (f TaskProcessorFunc) Process(task taskmodel.ITask) (ProcessResult, error) {
+	return f(task)
+}
+
 func (pr ProcessResult) GetResultCode() ProcessResultCode {
 	return pr.ResultCode
 }

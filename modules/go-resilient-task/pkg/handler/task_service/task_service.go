@@ -9,6 +9,7 @@ import (
 	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/dao"
 	taskexecutiontrigger "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/triggering/task_execution_trigger"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task"
+	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task_properties"
 	u "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/utils"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -21,7 +22,6 @@ type AddTaskRequest struct {
 	TaskId             uuid.UUID
 	UniqueKey          string
 	RunAfterTime       time.Time
-	Priority           *int
 	WarnWhenTaskExists bool
 	ExpectedQueueTime  time.Duration
 }
@@ -46,13 +46,14 @@ type TasksService struct {
 	taskDao                 dao.ITaskDao
 	tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer
 	logger                  *zap.Logger
+	taskProperties          taskproperties.ITaskProperties
 }
 
-func NewTasksService(taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, logger *zap.Logger) TasksService {
-	return TasksService{taskDao: taskDao, tasksExecutionTriggerer: tasksExecutionTriggerer, logger: logger}
+func NewTasksService(taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, logger *zap.Logger, taskProperties taskproperties.ITaskProperties) TasksService {
+	return TasksService{taskDao: taskDao, tasksExecutionTriggerer: tasksExecutionTriggerer, logger: logger, taskProperties: taskProperties}
 }
 
-func (service TasksService) AddTask(request AddTaskRequest) (AddTaskResponse, error) {
+func (ts TasksService) AddTask(request AddTaskRequest) (AddTaskResponse, error) {
 
 	now := time.Now().UTC()
 
@@ -63,9 +64,9 @@ func (service TasksService) AddTask(request AddTaskRequest) (AddTaskResponse, er
 		return AddTaskResponse{}, errors.New("type is required")
 	}
 
-	maxStuckTime := now.Add(request.ExpectedQueueTime)
+	maxStuckTime := u.If(request.ExpectedQueueTime == 0, now.Add(ts.taskProperties.GetTaskStuckTimeout()), now.Add(request.ExpectedQueueTime))
 
-	priority := 1
+	priority := 1 // Multiple priorities are not supported yet
 
 	insertTaskRequest := dao.InsertTaskRequest{
 		Data:         request.Data,
@@ -79,28 +80,28 @@ func (service TasksService) AddTask(request AddTaskRequest) (AddTaskResponse, er
 		Priority:     priority,
 	}
 
-	insertTaskResponse, error := service.taskDao.InsertTask(insertTaskRequest)
+	insertTaskResponse, error := ts.taskDao.InsertTask(insertTaskRequest)
 
 	if error != nil {
-		service.logger.Error("Failed to insert task", zap.Error(error))
+		ts.logger.Error("Failed to insert task", zap.Error(error))
 		return AddTaskResponse{}, error
 	}
 
 	if !insertTaskResponse.Inserted {
-		service.logger.Warn("Task already exists")
+		ts.logger.Warn("Task already exists")
 
 		return AddTaskResponse{TaskId: insertTaskResponse.TaskId, Result: ALREADY_EXISTS}, nil
 	}
 
 	if status == taskmodel.SUBMITTED {
 
-		service.triggerTask(&taskmodel.BaseTask{Id: insertTaskResponse.TaskId, Type: request.Type, Priority: priority})
+		ts.triggerTask(&taskmodel.BaseTask{Id: insertTaskResponse.TaskId, Type: request.Type, Priority: priority})
 	}
 
-	service.logger.Debug("Task added", zap.String("TaskId", insertTaskResponse.TaskId.String()))
+	ts.logger.Debug("Task added", zap.String("TaskId", insertTaskResponse.TaskId.String()))
 	return AddTaskResponse{TaskId: insertTaskResponse.TaskId, Result: OK}, nil
 }
 
-func (service *TasksService) triggerTask(baseTask taskmodel.IBaseTask) {
-	service.tasksExecutionTriggerer.Trigger(baseTask)
+func (ts *TasksService) triggerTask(baseTask taskmodel.IBaseTask) {
+	ts.tasksExecutionTriggerer.Trigger(baseTask)
 }

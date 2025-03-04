@@ -16,6 +16,7 @@ import (
 
 type ITaskExecutor interface {
 	SubmitTask(taskmodel.IBaseTask) error
+	StartProcessing() error
 }
 
 type WorkerPoolProperties struct {
@@ -40,8 +41,12 @@ type TaskExecutor struct {
 func NewTaskExecutor(taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, taskDao dao.ITaskDao, logger *zap.Logger) *TaskExecutor {
 	taskExecutor := &TaskExecutor{taskHandlerRegistry: taskHandlerRegistry, logger: logger, taskDao: taskDao, workerWg: &sync.WaitGroup{}}
 
-	taskExecutor.launchWorkersPools(taskExecutor.workerWg)
 	return taskExecutor
+}
+
+func (te *TaskExecutor) StartProcessing() error {
+	te.launchWorkersPools(te.workerWg)
+	return nil
 }
 
 func (te *TaskExecutor) launchWorkersPools(workerWg *sync.WaitGroup) error {
@@ -200,26 +205,26 @@ func (te TaskExecutor) markTaskAsDone(t taskmodel.IBaseTask) bool {
 	return updated
 }
 
-func (s TaskExecutor) deleteTask(t taskmodel.IBaseTask) bool {
-	updated, err := s.taskDao.DeleteTask(t.GetId(), t.GetVersion())
+func (te TaskExecutor) deleteTask(t taskmodel.IBaseTask) bool {
+	updated, err := te.taskDao.DeleteTask(t.GetId(), t.GetVersion())
 	if err != nil {
-		s.logger.Error(err.Error())
+		te.logger.Error(err.Error())
 		return false
 	}
 	return updated
 }
 
-func (s TaskExecutor) setRepeatOnSuccess(taskHandler taskhandler.ITaskHandler, task taskmodel.ITask) {
+func (te TaskExecutor) setRepeatOnSuccess(taskHandler taskhandler.ITaskHandler, task taskmodel.ITask) {
 	retryPolicy := taskHandler.GetRetryPolicy(task)
 	if retryPolicy.ResetTriesCountOnSuccess(task) {
 		task.SetProcessingTriesCount(0)
 	}
 	retry, retryTime := retryPolicy.GetRetryTime(task)
 	if !retry {
-		s.setRetriesOrError(taskHandler, task)
+		te.setRetriesOrError(taskHandler, task)
 	} else {
-		s.logger.Info("Repeating task will be reprocessed", zap.Time("retry_time", retryTime), zap.Int("tries", task.GetProcessingTriesCount()), zap.Bool("reset_tries_count", retryPolicy.ResetTriesCountOnSuccess(task)), zap.Int("version", task.GetVersion()))
-		s.setToBeRetried(task, retry, retryTime, retryPolicy.ResetTriesCountOnSuccess(task))
+		te.logger.Info("Repeating task will be reprocessed", zap.Time("retry_time", retryTime), zap.Int("tries", task.GetProcessingTriesCount()), zap.Bool("reset_tries_count", retryPolicy.ResetTriesCountOnSuccess(task)), zap.Int("version", task.GetVersion()))
+		te.setToBeRetried(task, retry, retryTime, retryPolicy.ResetTriesCountOnSuccess(task))
 	}
 }
 

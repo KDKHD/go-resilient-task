@@ -179,7 +179,7 @@ func stringHashCode(s string) uint32 {
 	return h.Sum32()
 }
 
-func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertTaskResponse, error) {
+func (ptd PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertTaskResponse, error) {
 
 	now := time.Now().UTC()
 
@@ -191,10 +191,10 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 
 	taskId := u.If(uuidProvided, request.TaskId, uuid.New())
 
-	repository.logger.Debug("Inserting task", zap.String("taskId", taskId.String()), zap.String("type", request.Type), zap.String("subType", request.SubType), zap.Time("nextEventTime", nextEventTime), zap.Time("now", now), zap.Int("priority", request.Priority))
+	ptd.logger.Debug("Inserting task", zap.String("taskId", taskId.String()), zap.String("type", request.Type), zap.String("subType", request.SubType), zap.Time("nextEventTime", nextEventTime), zap.Time("now", now), zap.Int("priority", request.Priority))
 
 	// Start a new transaction
-	tx, err := repository.db.Begin()
+	tx, err := ptd.db.Begin()
 	if err != nil {
 		return InsertTaskResponse{}, err
 	}
@@ -204,7 +204,7 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 
 		keyHash := stringHashCode(key)
 
-		insertUniqueTaskKeyStmt := tx.Stmt(repository.insertUniqueTaskKeyStmt)
+		insertUniqueTaskKeyStmt := tx.Stmt(ptd.insertUniqueTaskKeyStmt)
 
 		defer insertUniqueTaskKeyStmt.Close()
 
@@ -217,7 +217,7 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 		data, ok := err.(*pgconn.PgError)
 
 		if ok && data.Code != postgres.PostgresUniqueViolation {
-			repository.logger.Error("Task insertion did not succeed. The warning code is unknown: " + data.Code)
+			ptd.logger.Error("Task insertion did not succeed. The warning code is unknown: " + data.Code)
 			return InsertTaskResponse{}, err
 		} else if ok && data.Code == postgres.PostgresUniqueViolation {
 			return InsertTaskResponse{TaskId: taskId, Inserted: false}, nil
@@ -236,7 +236,7 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 
 	}
 
-	insertTaskStmt := tx.Stmt(repository.insertTaskStmt)
+	insertTaskStmt := tx.Stmt(ptd.insertTaskStmt)
 
 	result, err := insertTaskStmt.Exec(
 		taskId,                  // id
@@ -255,7 +255,7 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 	data, ok := err.(*pgconn.PgError)
 
 	if ok && data.Code != postgres.PostgresUniqueViolation {
-		repository.logger.Error("Task insertion did not succeed. The warning code is unknown: " + data.Code)
+		ptd.logger.Error("Task insertion did not succeed. The warning code is unknown: " + data.Code)
 		return InsertTaskResponse{}, err
 	} else if ok && data.Code == postgres.PostgresUniqueViolation {
 		return InsertTaskResponse{TaskId: taskId, Inserted: false}, nil
@@ -292,11 +292,11 @@ func (repository PostgresTaskDao) InsertTask(request InsertTaskRequest) (InsertT
 	return InsertTaskResponse{TaskId: request.TaskId, Inserted: true}, nil
 }
 
-func (repository PostgresTaskDao) SetStatus(taskId uuid.UUID, taskStatus taskmodel.TaskStatus, version int) (bool, error) {
+func (ptd PostgresTaskDao) SetStatus(taskId uuid.UUID, taskStatus taskmodel.TaskStatus, version int) (bool, error) {
 	// set timezone,
 	now := time.Now().UTC()
 
-	result, err := repository.setStatusStmt.Exec(
+	result, err := ptd.setStatusStmt.Exec(
 		taskStatus.String(), // status
 		now,                 // next_event_time
 		now,                 // state_time
@@ -318,11 +318,11 @@ func (repository PostgresTaskDao) SetStatus(taskId uuid.UUID, taskStatus taskmod
 	return rowsAffected > 0, nil
 }
 
-func (repository PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask, maxProcessingEndTime time.Time) (taskmodel.ITask, error) {
+func (ptd PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask, maxProcessingEndTime time.Time) (taskmodel.ITask, error) {
 
 	now := time.Now().UTC()
 
-	result, err := repository.grabForProcessingWithStatusStmt.Exec(
+	result, err := ptd.grabForProcessingWithStatusStmt.Exec(
 		taskmodel.PROCESSING.String(), // status
 		now,                           // processing_start_time
 		maxProcessingEndTime,          // next_event_time
@@ -344,11 +344,11 @@ func (repository PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask
 	}
 
 	if rowsAffected == 0 {
-		repository.logger.Error("No task was grabbed for processing")
+		ptd.logger.Error("No task was grabbed for processing")
 		return nil, nil
 	}
 
-	task, err := repository.GetTask(baseTask.GetId())
+	task, err := ptd.GetTask(baseTask.GetId())
 
 	if err != nil {
 		return nil, err
@@ -357,9 +357,9 @@ func (repository PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask
 	return task, nil
 }
 
-func (repository PostgresTaskDao) GetStuckTasks(maxTasks int, status taskmodel.TaskStatus) (GetStuckTasksResponse, error) {
-	repository.logger.Debug("Getting stuck tasks", zap.Int("maxTasks", maxTasks), zap.String("status", status.String()), zap.Time("now", time.Now().UTC()))
-	rows, err := repository.getStuckTasksSql.Query(status.String(), time.Now().UTC(), maxTasks)
+func (ptd PostgresTaskDao) GetStuckTasks(maxTasks int, status taskmodel.TaskStatus) (GetStuckTasksResponse, error) {
+	ptd.logger.Debug("Getting stuck tasks", zap.Int("maxTasks", maxTasks), zap.String("status", status.String()), zap.Time("now", time.Now().UTC()))
+	rows, err := ptd.getStuckTasksSql.Query(status.String(), time.Now().UTC(), maxTasks)
 
 	if err != nil {
 		return GetStuckTasksResponse{}, err
@@ -406,9 +406,9 @@ func (repository PostgresTaskDao) GetStuckTasks(maxTasks int, status taskmodel.T
 
 }
 
-func (repository PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, error) {
+func (ptd PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, error) {
 
-	rows, err := repository.getTaskStmt1.Query(taskId)
+	rows, err := ptd.getTaskStmt1.Query(taskId)
 
 	if err != nil {
 		return nil, err
@@ -456,12 +456,12 @@ func (repository PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, er
 
 }
 
-func (repository PostgresTaskDao) MarkAsSubmitted(taskId uuid.UUID, version int, maxStuckTime time.Time) (bool, error) {
+func (ptd PostgresTaskDao) MarkAsSubmitted(taskId uuid.UUID, version int, maxStuckTime time.Time) (bool, error) {
 	// set timezone,
 	maxStuckTimeLoc := maxStuckTime.UTC()
 	now := time.Now().UTC()
 
-	result, err := repository.setStatusStmt.Exec(
+	result, err := ptd.setStatusStmt.Exec(
 		taskmodel.SUBMITTED.String(), // status
 		maxStuckTimeLoc,              // next_event_time
 		now,                          // state_time
@@ -484,8 +484,8 @@ func (repository PostgresTaskDao) MarkAsSubmitted(taskId uuid.UUID, version int,
 	return rowsAffected > 0, nil
 }
 
-func (repository PostgresTaskDao) DeleteTask(taskId uuid.UUID, version int) (bool, error) {
-	result, err := repository.deleteTaskStmt.Exec(taskId, version)
+func (ptd PostgresTaskDao) DeleteTask(taskId uuid.UUID, version int) (bool, error) {
+	result, err := ptd.deleteTaskStmt.Exec(taskId, version)
 
 	if err != nil {
 		return false, err
@@ -499,13 +499,13 @@ func (repository PostgresTaskDao) DeleteTask(taskId uuid.UUID, version int) (boo
 	return rowsAffected > 0, nil
 }
 
-func (repository PostgresTaskDao) SetToBeRetried(taskId uuid.UUID, shouldRetry bool, retryTime time.Time, version int, resetTriesCount bool) (bool, error) {
+func (ptd PostgresTaskDao) SetToBeRetried(taskId uuid.UUID, shouldRetry bool, retryTime time.Time, version int, resetTriesCount bool) (bool, error) {
 	now := time.Now().UTC()
 
 	var result sql.Result
 	var err error
 	if resetTriesCount {
-		result, err = repository.setToBeRetried1Stmt.Exec(
+		result, err = ptd.setToBeRetried1Stmt.Exec(
 			taskmodel.WAITING.String(), // status
 			u.If(shouldRetry, sql.NullTime{Valid: true, Time: retryTime}, sql.NullTime{Valid: false}), // next_event_time
 			0,         // process_tries_count
@@ -516,7 +516,7 @@ func (repository PostgresTaskDao) SetToBeRetried(taskId uuid.UUID, shouldRetry b
 			version,   // version
 		)
 	} else {
-		result, err = repository.setToBeRetriedStmt.Exec(
+		result, err = ptd.setToBeRetriedStmt.Exec(
 			taskmodel.WAITING.String(), // status
 			retryTime,                  // next_event_time
 			now,                        // state_time
@@ -540,8 +540,8 @@ func (repository PostgresTaskDao) SetToBeRetried(taskId uuid.UUID, shouldRetry b
 
 }
 
-func (repository PostgresTaskDao) GetTaskVersion(taskId uuid.UUID) (int, error) {
-	rows, err := repository.getTaskVersionStmt.Query(taskId)
+func (ptd PostgresTaskDao) GetTaskVersion(taskId uuid.UUID) (int, error) {
+	rows, err := ptd.getTaskVersionStmt.Query(taskId)
 
 	if err != nil {
 		return 0, err

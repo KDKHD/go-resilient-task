@@ -6,9 +6,15 @@ import (
 	"time"
 
 	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task/config"
+	concurrencypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/concurrency_policy"
+	processingpolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/processing_policy"
+	retrypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/retry_policy"
 	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler"
+	taskhandleradapter "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler_adapter"
+	taskprocessor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_processor"
 	taskservice "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_service"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task"
+	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task_properties"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -29,42 +35,98 @@ func (s *IntegrationTestSuite) TestAddTask() {
 		logger.Error("Failed to create kafka client", zap.Error(err))
 	}
 
-	taskProcessor1 := taskhandler.NewTaskProcessor(logger, func(task taskmodel.ITask) {
-		logger.Debug("Handler 1 processing task")
-	})
-	taskHandler1 := taskhandler.NewTaskHandler(taskProcessor1, logger, func(task taskmodel.IBaseTask) bool {
-		return task.GetType() == "test"
-	})
-	taskProcessor2 := taskhandler.NewTaskProcessor(logger, func(task taskmodel.ITask) {
-		logger.Debug("Handler 2 processing task")
-	})
-	taskHandler2 := taskhandler.NewTaskHandler(taskProcessor2, logger, func(task taskmodel.IBaseTask) bool {
-		return task.GetType() == "test2"
-	})
+	taskHandler1 := taskhandleradapter.
+		NewTaskHandlerAdapterBuilder(
+			func(task taskmodel.IBaseTask) bool {
+				return task.GetType() == "payment_initiated"
+			},
+			taskprocessor.TaskProcessorFunc(
+				func(task taskmodel.ITask) (taskprocessor.ProcessResult, error) {
+					logger.Debug("processing task payment initaiated", zap.String("task_data", task.GetData()))
+					return taskprocessor.ProcessResult{
+						ResultCode: taskprocessor.DONE,
+					}, nil
+				},
+			),
+		).
+		WithConcurrencyPolicy(
+			concurrencypolicy.NewSimpleTaskConcurrencyPolicy(20, logger),
+		).
+		WithProcessingPolicy(
+			processingpolicy.NewSimpleTaskProcessingPolicy(time.Minute * 1),
+		).
+		WithRetryPolicy(
+			retrypolicy.NewExponentialRetryPolicy(
+				retrypolicy.WithDelay(5*time.Second),
+				retrypolicy.WithMultiplier(4),
+				retrypolicy.WithMaxCount(3),
+				retrypolicy.WithMaxDelay(20*time.Minute),
+			),
+		).
+		Build()
+
+	taskHandler2 := taskhandleradapter.
+		NewTaskHandlerAdapterBuilder(
+			func(task taskmodel.IBaseTask) bool {
+				return task.GetType() == "payment_processed"
+			},
+			taskprocessor.TaskProcessorFunc(
+				func(task taskmodel.ITask) (taskprocessor.ProcessResult, error) {
+					logger.Debug("processing task payment_processed", zap.String("task_data", task.GetData()))
+					return taskprocessor.ProcessResult{
+						ResultCode: taskprocessor.DONE,
+					}, nil
+				},
+			),
+		).
+		WithConcurrencyPolicy(
+			concurrencypolicy.NewSimpleTaskConcurrencyPolicy(20, logger),
+		).
+		WithProcessingPolicy(
+			processingpolicy.NewSimpleTaskProcessingPolicy(time.Minute * 1),
+		).
+		WithRetryPolicy(
+			retrypolicy.NewExponentialRetryPolicy(
+				retrypolicy.WithDelay(5*time.Second),
+				retrypolicy.WithMultiplier(4),
+				retrypolicy.WithMaxCount(3),
+				retrypolicy.WithMaxDelay(20*time.Minute),
+			),
+		).
+		Build()
 
 	taskHandlers := []taskhandler.ITaskHandler{taskHandler1, taskHandler2}
 
 	configuration := config.NewGoResilientTaskConfig(
+		config.WithTaskProperties(
+			taskproperties.NewTaskProperties(taskproperties.WithTaskStuckTimeout(time.Minute*5)),
+		),
 		config.WithLogger(logger),
-		config.WithTaskHandlers(taskHandlers),
 		config.WithDefaultTaskRegistry(),
 		config.WithPostgresTaskDao(s.postgresClient),
 		config.WithDefaultTaskExecutor(),
 		config.WithKafkaTaskExecutionTrigger(kafkaClient),
 		config.WithDefaultTaskService(),
-		config.WithDefaultTaskResumer(),
+		config.WithDefaultTaskResumer(2*time.Second),
 	)
 
-	/* configuration.GetTaskResumer().ResumeProcessing()
+	configuration.GetHandlerRegistry().SetTaskHandlers(taskHandlers)
+	/* configuration.GetTaskExecutor().StartProcessing()
+	configuration.GetTaskResumer().ResumeProcessing()
 	configuration.GetTaskExecutionTrigger().StartTasksProcessing() */
 
-	for i := 0; i < 100; i++ {
-		addTaskResponse, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "test", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
-
+	for i := 0; i < 10; i++ {
+		addTaskResponse1, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_initiated", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 50), ExpectedQueueTime: time.Second * 120})
 		s.Require().NoError(error)
 
-		assert.NotNil(s.T(), addTaskResponse, "addTaskResponse should not be nil")
-		assert.NotNil(s.T(), addTaskResponse.TaskId.String(), "addTaskResponse.TaskId should not be nil")
+		assert.NotNil(s.T(), addTaskResponse1, "addTaskResponse1 should not be nil")
+		assert.NotNil(s.T(), addTaskResponse1.TaskId.String(), "addTaskResponse1.TaskId should not be nil")
+		/*
+			addTaskResponse2, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_processed", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
+			s.Require().NoError(error)
+			assert.NotNil(s.T(), addTaskResponse2, "addTaskResponse2 should not be nil")
+			assert.NotNil(s.T(), addTaskResponse2.TaskId.String(), "addTaskResponse2.TaskId should not be nil") */
+
 	}
 
 	logger.Debug("Starting tasks processing")

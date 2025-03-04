@@ -13,6 +13,7 @@ import (
 type ITaskHandlerRegistry interface {
 	GetTaskHandler(task taskmodel.IBaseTask) (taskhandler.ITaskHandler, error)
 	GetTaskHandlers() []taskhandler.ITaskHandler
+	SetTaskHandlers(handlers []taskhandler.ITaskHandler)
 	GetExpectedProcessingMoment(task taskmodel.IBaseTask) (time.Time, error)
 }
 
@@ -21,29 +22,12 @@ type TaskHandlerRegistry struct {
 	logger   *zap.Logger
 }
 
-type TaskHandlerRegistryConfig struct {
-	handlers []taskhandler.ITaskHandler
-	logger   *zap.Logger
+func NewTaskHandlerRegistry(logger *zap.Logger) *TaskHandlerRegistry {
+	return &TaskHandlerRegistry{logger: logger}
 }
 
-func WithLogger(logger *zap.Logger) func(*TaskHandlerRegistryConfig) {
-	return func(config *TaskHandlerRegistryConfig) {
-		config.logger = logger
-	}
-}
-
-func WithHandler(handler taskhandler.ITaskHandler) func(*TaskHandlerRegistryConfig) {
-	return func(config *TaskHandlerRegistryConfig) {
-		config.handlers = append(config.handlers, handler)
-	}
-}
-
-func NewTaskHandlerRegistry(configs ...func(*TaskHandlerRegistryConfig)) *TaskHandlerRegistry {
-	registryConfig := &TaskHandlerRegistryConfig{}
-	for _, config := range configs {
-		config(registryConfig)
-	}
-	return &TaskHandlerRegistry{handlers: registryConfig.handlers, logger: registryConfig.logger}
+func (registry *TaskHandlerRegistry) SetTaskHandlers(handlers []taskhandler.ITaskHandler) {
+	registry.handlers = handlers
 }
 
 func (registry TaskHandlerRegistry) GetTaskHandler(task taskmodel.IBaseTask) (taskhandler.ITaskHandler, error) {
@@ -63,22 +47,22 @@ func (registry TaskHandlerRegistry) GetTaskHandler(task taskmodel.IBaseTask) (ta
 	return foundHandlers[0], nil
 }
 
-func (registry TaskHandlerRegistry) GetTaskHandlers() []taskhandler.ITaskHandler {
-	return registry.handlers
+func (thr TaskHandlerRegistry) GetTaskHandlers() []taskhandler.ITaskHandler {
+	return thr.handlers
 }
 
-func (registry TaskHandlerRegistry) getTaskProcessingPolicy(task taskmodel.IBaseTask) processingpolicy.ITaskProcessingPolicy {
-	handler, err := registry.GetTaskHandler(task)
+func (thr TaskHandlerRegistry) getTaskProcessingPolicy(task taskmodel.IBaseTask) processingpolicy.ITaskProcessingPolicy {
+	handler, err := thr.GetTaskHandler(task)
 	if err != nil {
-		registry.logger.Error("Failed to get task handler", zap.Error(err))
+		thr.logger.Error("Failed to get task handler", zap.Error(err))
 		return nil
 	}
 
 	return handler.GetProcessingPolicy(task)
 }
 
-func (registry TaskHandlerRegistry) GetExpectedProcessingMoment(task taskmodel.IBaseTask) (time.Time, error) {
-	taskProcessingPolicy := registry.getTaskProcessingPolicy(task)
+func (thr TaskHandlerRegistry) GetExpectedProcessingMoment(task taskmodel.IBaseTask) (time.Time, error) {
+	taskProcessingPolicy := thr.getTaskProcessingPolicy(task)
 
 	if taskProcessingPolicy == nil {
 		return time.Now().Add(1 * time.Minute), nil

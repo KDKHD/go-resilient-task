@@ -7,10 +7,10 @@ import (
 	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/dao"
 	handlerregistry "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/handler_registry"
 	taskexecutor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_executor"
-	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler"
 	taskresumer "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_resumer"
 	taskservice "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_service"
 	taskexecutiontrigger "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/triggering/task_execution_trigger"
+	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task_properties"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go.uber.org/zap"
 )
@@ -18,12 +18,12 @@ import (
 type GoResilientTaskConfig struct {
 	logger               *zap.Logger
 	taskDao              dao.ITaskDao
-	handlers             []taskhandler.ITaskHandler
 	taskExecutor         taskexecutor.ITaskExecutor
 	taskExecutionTrigger taskexecutiontrigger.ITasksExecutionTriggerer
 	taskService          taskservice.ITasksService
 	taskResumer          taskresumer.ITaskResumer
 	taskHandlerRegistry  handlerregistry.ITaskHandlerRegistry
+	taskProperties       taskproperties.ITaskProperties
 }
 
 type GoResilientTaskConfigOption func(*GoResilientTaskConfig)
@@ -53,24 +53,10 @@ func WithPostgresTaskDao(postgresClient *sql.DB) GoResilientTaskConfigOption {
 	}
 }
 
-func WithTaskHandlers(handlers []taskhandler.ITaskHandler) GoResilientTaskConfigOption {
-	return func(config *GoResilientTaskConfig) {
-		config.handlers = handlers
-	}
-}
-
 func WithDefaultTaskRegistry() GoResilientTaskConfigOption {
 	return func(config *GoResilientTaskConfig) {
-		taskHandlerRegistryOptions := []func(*handlerregistry.TaskHandlerRegistryConfig){
-			handlerregistry.WithLogger(config.requireLogger()),
-		}
-
-		for _, handler := range config.requireHandlers() {
-			taskHandlerRegistryOptions = append(taskHandlerRegistryOptions, handlerregistry.WithHandler(handler))
-		}
-
 		config.taskHandlerRegistry = handlerregistry.NewTaskHandlerRegistry(
-			taskHandlerRegistryOptions...,
+			config.requireLogger(),
 		)
 	}
 }
@@ -95,7 +81,7 @@ func WithDefaultTaskExecutor() GoResilientTaskConfigOption {
 
 func WithDefaultTaskService() GoResilientTaskConfigOption {
 	return func(config *GoResilientTaskConfig) {
-		config.taskService = taskservice.NewTasksService(config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireLogger())
+		config.taskService = taskservice.NewTasksService(config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireLogger(), config.requireTaskProperties())
 	}
 }
 
@@ -123,9 +109,15 @@ func WithTaskHandlerRegistry(taskHandlerRegistry handlerregistry.ITaskHandlerReg
 	}
 }
 
-func WithDefaultTaskResumer() GoResilientTaskConfigOption {
+func WithDefaultTaskResumer(pollingInterval time.Duration) GoResilientTaskConfigOption {
 	return func(config *GoResilientTaskConfig) {
-		config.taskResumer = taskresumer.NewTaskResumer(config.requireLogger(), config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireTaskExecutor(), time.Second*2, config.requireTaskHandlerRegistry())
+		config.taskResumer = taskresumer.NewTaskResumer(config.requireLogger(), config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireTaskExecutor(), pollingInterval, config.requireTaskHandlerRegistry())
+	}
+}
+
+func WithTaskProperties(taskProperties taskproperties.ITaskProperties) GoResilientTaskConfigOption {
+	return func(config *GoResilientTaskConfig) {
+		config.taskProperties = taskProperties
 	}
 }
 
@@ -141,10 +133,6 @@ func NewGoResilientTaskConfig(options ...GoResilientTaskConfigOption) *GoResilie
 
 	if config.taskDao == nil {
 		panic("TaskDao is required")
-	}
-
-	if config.handlers == nil {
-		panic("Handlers are required")
 	}
 
 	if config.taskExecutor == nil {
@@ -167,6 +155,10 @@ func NewGoResilientTaskConfig(options ...GoResilientTaskConfigOption) *GoResilie
 		panic("TaskHandlerRegistry is required")
 	}
 
+	if config.taskProperties == nil {
+		panic("TaskProperties is required")
+	}
+
 	return config
 }
 
@@ -180,6 +172,14 @@ func (c *GoResilientTaskConfig) GetTaskExecutionTrigger() taskexecutiontrigger.I
 
 func (c *GoResilientTaskConfig) GetTaskResumer() taskresumer.ITaskResumer {
 	return c.taskResumer
+}
+
+func (c GoResilientTaskConfig) GetHandlerRegistry() handlerregistry.ITaskHandlerRegistry {
+	return c.taskHandlerRegistry
+}
+
+func (c *GoResilientTaskConfig) GetTaskExecutor() taskexecutor.ITaskExecutor {
+	return c.taskExecutor
 }
 
 func (c *GoResilientTaskConfig) requireLogger() *zap.Logger {
@@ -231,9 +231,9 @@ func (c *GoResilientTaskConfig) requireTaskResumer() taskresumer.ITaskResumer {
 	return c.taskResumer
 }
 
-func (c *GoResilientTaskConfig) requireHandlers() []taskhandler.ITaskHandler {
-	if c.handlers == nil {
-		panic("Handlers are required")
+func (c *GoResilientTaskConfig) requireTaskProperties() taskproperties.ITaskProperties {
+	if c.taskProperties == nil {
+		panic("TaskProperties is required")
 	}
-	return c.handlers
+	return c.taskProperties
 }

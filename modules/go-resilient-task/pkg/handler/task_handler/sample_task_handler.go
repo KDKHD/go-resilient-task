@@ -20,18 +20,16 @@ type TaskHandler struct {
 }
 
 type TaskProcessor struct {
-	logger  *zap.Logger
-	process func(task taskmodel.ITask)
+	logger *zap.Logger
 }
 
 type TaskRetryPolicy struct {
 	logger *zap.Logger
 }
 
-func NewTaskProcessor(logger *zap.Logger, process func(task taskmodel.ITask)) *TaskProcessor {
+func NewTaskProcessor(logger *zap.Logger) *TaskProcessor {
 	return &TaskProcessor{
-		logger:  logger,
-		process: process,
+		logger: logger,
 	}
 }
 
@@ -51,18 +49,15 @@ func NewTaskHandler(taskProcessor taskprocessor.ITaskProcessor, logger *zap.Logg
 	}
 }
 
-func (handler TaskHandler) GetProcessingPolicy(task taskmodel.IBaseTask) processingpolicy.ITaskProcessingPolicy {
-	return handler.taskProcessingPolicy
+func (th TaskHandler) GetProcessingPolicy(task taskmodel.IBaseTask) processingpolicy.ITaskProcessingPolicy {
+	return th.taskProcessingPolicy
 }
 
-// GetProcessor returns the processor for the given task
-
-func (handler TaskHandler) GetProcessor(task taskmodel.IBaseTask) taskprocessor.ITaskProcessor {
-	return handler.taskProcessor
+func (th TaskHandler) GetProcessor(task taskmodel.IBaseTask) taskprocessor.ITaskProcessor {
+	return th.taskProcessor
 }
 
-// GetRetryPolicy returns the retry policy for the given task
-func (handler TaskHandler) GetRetryPolicy(task taskmodel.IBaseTask) retrypolicy.ITaskRetryPolicy {
+func (th TaskHandler) GetRetryPolicy(task taskmodel.IBaseTask) retrypolicy.ITaskRetryPolicy {
 	// 5s 20s 1m20s 5m20s 20m
 	return retrypolicy.NewExponentialRetryPolicy(
 		retrypolicy.WithDelay(5*time.Second),
@@ -72,38 +67,25 @@ func (handler TaskHandler) GetRetryPolicy(task taskmodel.IBaseTask) retrypolicy.
 	)
 }
 
-func (handler TaskHandler) GetConcurrencyPolicy() concurrencypolicy.ITaskConcurrencyPolicy {
-	return handler.concurrencypolicy
+func (th TaskHandler) GetConcurrencyPolicy() concurrencypolicy.ITaskConcurrencyPolicy {
+	return th.concurrencypolicy
 }
 
-// Handles returns true if the handler can handle the given task
-
-func (handler TaskHandler) Handles(task taskmodel.IBaseTask) bool {
-	return handler.handles(task)
+func (th TaskHandler) Handles(task taskmodel.IBaseTask) bool {
+	return th.handles(task)
 }
 
-/* func (handler TaskHandler) GetProcessingPolicy(task taskmodel.IBaseTask) ITaskProcessingPolicy {
-	return NewSimpleTaskProcessingPolicy()
-} */
-
-// GetRetryTime returns the time when the task should be retried
-
-func (retryPolicy TaskRetryPolicy) GetRetryTime(task taskmodel.ITask) time.Time {
+func (trp TaskRetryPolicy) GetRetryTime(task taskmodel.ITask) time.Time {
 	return time.Now().UTC()
 }
 
-// Process processes the task
+func (tp TaskProcessor) Process(task taskmodel.ITask) (taskprocessor.ProcessResult, error) {
 
-func (processor TaskProcessor) Process(task taskmodel.ITask) (taskprocessor.ProcessResult, error) {
-
-	processor.process(task)
-
-	processor.logger.Debug("Processing task start", zap.String("data", task.GetData()))
-	// Generate a random number between 1 and 10
+	tp.logger.Debug("Processing task start", zap.String("data", task.GetData()))
 
 	time.Sleep(5 * time.Second)
 
-	processor.logger.Debug("Processing task finish", zap.String("data", task.GetData()))
+	tp.logger.Debug("Processing task finish", zap.String("data", task.GetData()))
 
 	//return taskprocessor.ProcessResult{}, errors.New("error")
 
