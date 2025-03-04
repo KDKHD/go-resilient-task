@@ -2,6 +2,8 @@ module github.com/KDKHD/alarm
 
 go 1.23.5
 
+replace github.com/KDKHD/go-resilient-task/modules/go-resilient-task => ../../modules/go-resilient-task
+
 require (
 	github.com/KDKHD/go-resilient-task/modules/go-resilient-task v0.0.0-20250303214559-469595d66da9
 	github.com/jackc/pgx/v5 v5.7.2
