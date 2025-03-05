@@ -1,7 +1,7 @@
 package main
 
 import (
-	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler"
+	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_handler"
 	"go.uber.org/fx"
 )
 

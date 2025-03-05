@@ -1,11 +1,11 @@
 module github.com/KDKHD/go-resilient-task/modules/go-resilient-task-integration-test
 
-replace github.com/KDKHD/go-resilient-task/modules/go-resilient-task => ../go-resilient-task
+replace github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core => ../go-resilient-task-core
 
 go 1.23.5
 
 require (
-	github.com/KDKHD/go-resilient-task/modules/go-resilient-task v0.0.0-00010101000000-000000000000
+	github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core v0.0.0-00010101000000-000000000000
 	github.com/golang-migrate/migrate/v4 v4.18.2
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.2
