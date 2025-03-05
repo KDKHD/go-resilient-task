@@ -7,12 +7,16 @@ import (
 
 	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task/config"
 	concurrencypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/concurrency_policy"
+	handlerregistry "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/handler_registry"
 	processingpolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/processing_policy"
 	retrypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/retry_policy"
+	taskexecutor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_executor"
 	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler"
 	taskhandleradapter "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_handler_adapter"
 	taskprocessor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_processor"
+	taskresumer "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_resumer"
 	taskservice "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/task_service"
+	taskexecutiontrigger "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/handler/triggering/task_execution_trigger"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task"
 	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task/pkg/model/task_properties"
 	"github.com/google/uuid"
@@ -27,7 +31,7 @@ func NewLogger() *zap.Logger {
 	return logger
 }
 
-func NewResilientTaskConfiguration(logger *zap.Logger, postgresClient *sql.DB, kafkaClient *kgo.Client, taskProperties taskproperties.ITaskProperties) *config.GoResilientTaskConfig {
+func NewResilientTaskConfiguration(logger *zap.Logger, postgresClient *sql.DB, kafkaClient *kgo.Client, taskProperties taskproperties.ITaskProperties) (handlerregistry.ITaskHandlerRegistry, taskexecutiontrigger.ITasksExecutionTriggerer, taskexecutor.ITaskExecutor, taskresumer.ITaskResumer, taskservice.ITasksService) {
 
 	configuration := config.NewGoResilientTaskConfig(
 		config.WithTaskProperties(taskProperties),
@@ -40,7 +44,7 @@ func NewResilientTaskConfiguration(logger *zap.Logger, postgresClient *sql.DB, k
 		config.WithDefaultTaskResumer(time.Second*2),
 	)
 
-	return configuration
+	return configuration.GetHandlerRegistry(), configuration.GetTaskExecutionTrigger(), configuration.GetTaskExecutor(), configuration.GetTaskResumer(), configuration.GetTaskService()
 }
 
 func PaymentInitiatedHandler(logger *zap.Logger, config *config.GoResilientTaskConfig) taskhandler.ITaskHandler {
@@ -150,17 +154,20 @@ func NewTaskProperties() taskproperties.ITaskProperties {
 
 type LaunchResilientTaskFxInvokeParams struct {
 	fx.In
-	Configuration *config.GoResilientTaskConfig
-	Handlers      []taskhandler.ITaskHandler `group:"handlers"`
-	Logger        *zap.Logger
+	HandlerRegistry      handlerregistry.ITaskHandlerRegistry
+	TaskExecutor         taskexecutor.ITaskExecutor
+	TaskResumer          taskresumer.ITaskResumer
+	TaskExecutionTrigger taskexecutiontrigger.ITasksExecutionTriggerer
+	Handlers             []taskhandler.ITaskHandler `group:"handlers"`
+	Logger               *zap.Logger
 }
 
 func InitiateResilientTaskFx() fx.Option {
 	return fx.Invoke(func(params LaunchResilientTaskFxInvokeParams) {
-		params.Configuration.GetHandlerRegistry().SetTaskHandlers(params.Handlers)
-		params.Configuration.GetTaskExecutor().StartProcessing()
-		params.Configuration.GetTaskResumer().ResumeProcessing()
-		err := params.Configuration.GetTaskExecutionTrigger().StartTasksProcessing()
+		params.HandlerRegistry.SetTaskHandlers(params.Handlers)
+		params.TaskExecutor.StartProcessing()
+		params.TaskResumer.ResumeProcessing()
+		err := params.TaskExecutionTrigger.StartTasksProcessing()
 
 		if err != nil {
 			params.Logger.Error("Failed to start task processing", zap.Error(err))
