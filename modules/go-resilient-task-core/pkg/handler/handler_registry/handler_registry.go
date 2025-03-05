@@ -22,7 +22,7 @@ type TaskHandlerRegistry struct {
 	logger   *zap.Logger
 }
 
-func NewTaskHandlerRegistry(logger *zap.Logger) *TaskHandlerRegistry {
+func NewTaskHandlerRegistry(logger *zap.Logger) ITaskHandlerRegistry {
 	return &TaskHandlerRegistry{logger: logger}
 }
 

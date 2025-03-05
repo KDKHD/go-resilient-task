@@ -28,7 +28,7 @@ func (s *IntegrationTestSuite) TestAddTask() {
 	defer logger.Sync() // Flushes buffer, if any
 
 	kafkaClient, err := s.createKafkaClient(context.Background(),
-		kgo.ConsumerGroup("my-group-identifier"),
+		kgo.ConsumerGroup("default-consumer-group"),
 		kgo.ConsumeTopics("tasks"))
 
 	if err != nil {
@@ -107,25 +107,25 @@ func (s *IntegrationTestSuite) TestAddTask() {
 		config.WithDefaultTaskExecutor(),
 		config.WithKafkaTaskExecutionTrigger(kafkaClient),
 		config.WithDefaultTaskService(),
-		config.WithDefaultTaskResumer(2*time.Second),
+		config.WithDefaultTaskResumer(),
 	)
 
 	configuration.GetHandlerRegistry().SetTaskHandlers(taskHandlers)
-	/* configuration.GetTaskExecutor().StartProcessing()
+	configuration.GetTaskExecutor().StartProcessing()
 	configuration.GetTaskResumer().ResumeProcessing()
-	configuration.GetTaskExecutionTrigger().StartTasksProcessing() */
+	configuration.GetTaskExecutionTrigger().StartTasksProcessing()
 
 	for i := 0; i < 10; i++ {
-		addTaskResponse1, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_initiated", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 50), ExpectedQueueTime: time.Second * 120})
+		addTaskResponse1, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_initiated", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 5), ExpectedQueueTime: time.Second * 120})
 		s.Require().NoError(error)
 
 		assert.NotNil(s.T(), addTaskResponse1, "addTaskResponse1 should not be nil")
 		assert.NotNil(s.T(), addTaskResponse1.TaskId.String(), "addTaskResponse1.TaskId should not be nil")
-		/*
-			addTaskResponse2, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_processed", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
-			s.Require().NoError(error)
-			assert.NotNil(s.T(), addTaskResponse2, "addTaskResponse2 should not be nil")
-			assert.NotNil(s.T(), addTaskResponse2.TaskId.String(), "addTaskResponse2.TaskId should not be nil") */
+
+		addTaskResponse2, error := configuration.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_processed", TaskId: uuid.New(), Data: []byte(fmt.Sprintf("TaskNumber %d", i)), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
+		s.Require().NoError(error)
+		assert.NotNil(s.T(), addTaskResponse2, "addTaskResponse2 should not be nil")
+		assert.NotNil(s.T(), addTaskResponse2.TaskId.String(), "addTaskResponse2.TaskId should not be nil")
 
 	}
 

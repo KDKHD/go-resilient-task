@@ -49,7 +49,7 @@ type TasksService struct {
 	taskProperties          taskproperties.ITaskProperties
 }
 
-func NewTasksService(taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, logger *zap.Logger, taskProperties taskproperties.ITaskProperties) TasksService {
+func NewTasksService(taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, logger *zap.Logger, taskProperties taskproperties.ITaskProperties) ITasksService {
 	return TasksService{taskDao: taskDao, tasksExecutionTriggerer: tasksExecutionTriggerer, logger: logger, taskProperties: taskProperties}
 }
 

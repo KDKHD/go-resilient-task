@@ -3,7 +3,6 @@ package taskexecutiontrigger
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	handlerregistry "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/handler_registry"
 	taskexecutor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_executor"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task"
+	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task_properties"
 	"github.com/pkg/errors"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"go.uber.org/zap"
@@ -23,12 +23,10 @@ type KafkaTaskExecutionTrigger struct {
 	kafkaClient         *kgo.Client
 	taskExecutor        taskexecutor.ITaskExecutor
 	taskDao             dao.ITaskDao
+	taskProperties      taskproperties.ITaskProperties
 }
 
-func NewKafkaTaskExecutionTrigger(taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, logger *zap.Logger, kafkaClient *kgo.Client, taskExecutor taskexecutor.ITaskExecutor, taskDao dao.ITaskDao) *KafkaTaskExecutionTrigger {
-	fmt.Print("taskHandlerRegistry")
-	fmt.Print(taskHandlerRegistry)
-
+func NewKafkaTaskExecutionTrigger(taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, logger *zap.Logger, kafkaClient *kgo.Client, taskExecutor taskexecutor.ITaskExecutor, taskDao dao.ITaskDao, taskProperties taskproperties.ITaskProperties) ITasksExecutionTriggerer {
 	return &KafkaTaskExecutionTrigger{
 		taskHandlerRegistry: taskHandlerRegistry,
 		lifecycleLock:       &sync.Mutex{},
@@ -36,6 +34,7 @@ func NewKafkaTaskExecutionTrigger(taskHandlerRegistry handlerregistry.ITaskHandl
 		kafkaClient:         kafkaClient,
 		taskExecutor:        taskExecutor,
 		taskDao:             taskDao,
+		taskProperties:      taskProperties,
 	}
 }
 
@@ -64,7 +63,7 @@ func (ket *KafkaTaskExecutionTrigger) Trigger(task taskmodel.IBaseTask) error {
 	}
 
 	record := &kgo.Record{
-		Topic:     "tasks",
+		Topic:     ket.taskProperties.GetKafka().GetKafkaTopicsNamespace() + "tasks",
 		Value:     taskSt,
 		Timestamp: time.Now().UTC(),
 	}

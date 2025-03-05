@@ -10,6 +10,7 @@ import (
 	taskexecutor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_executor"
 	taskexecutiontrigger "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/triggering/task_execution_trigger"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task"
+	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task_properties"
 	"go.uber.org/zap"
 )
 
@@ -19,24 +20,28 @@ type ITaskResumer interface {
 }
 
 type TaskResumer struct {
-	logger                  *zap.Logger
-	paused                  *atomic.Bool
-	taskDao                 dao.ITaskDao
-	tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer
-	taskExecutor            taskexecutor.ITaskExecutor
-	taskHandlerRegistry     handlerregistry.ITaskHandlerRegistry
-	pollingInterval         *time.Ticker
+	logger                   *zap.Logger
+	paused                   *atomic.Bool
+	taskDao                  dao.ITaskDao
+	tasksExecutionTriggerer  taskexecutiontrigger.ITasksExecutionTriggerer
+	taskExecutor             taskexecutor.ITaskExecutor
+	taskHandlerRegistry      handlerregistry.ITaskHandlerRegistry
+	taskProperties           taskproperties.ITaskProperties
+	handleWaitingTaskChannel chan taskmodel.IStuckTask
+	handleStuckTaskChannel   chan taskmodel.IStuckTask
 }
 
-func NewTaskResumer(logger *zap.Logger, taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, taskExecutor taskexecutor.ITaskExecutor, pollingInterval time.Duration, taskHandlerRegistry handlerregistry.ITaskHandlerRegistry) *TaskResumer {
+func NewTaskResumer(logger *zap.Logger, taskDao dao.ITaskDao, tasksExecutionTriggerer taskexecutiontrigger.ITasksExecutionTriggerer, taskExecutor taskexecutor.ITaskExecutor, taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, taskProperties taskproperties.ITaskProperties) ITaskResumer {
 	taskResumer := TaskResumer{
-		logger:                  logger,
-		paused:                  &atomic.Bool{},
-		taskDao:                 taskDao,
-		tasksExecutionTriggerer: tasksExecutionTriggerer,
-		taskExecutor:            taskExecutor,
-		pollingInterval:         time.NewTicker(pollingInterval),
-		taskHandlerRegistry:     taskHandlerRegistry,
+		logger:                   logger,
+		paused:                   &atomic.Bool{},
+		taskDao:                  taskDao,
+		tasksExecutionTriggerer:  tasksExecutionTriggerer,
+		taskExecutor:             taskExecutor,
+		taskHandlerRegistry:      taskHandlerRegistry,
+		taskProperties:           taskProperties,
+		handleWaitingTaskChannel: make(chan taskmodel.IStuckTask),
+		handleStuckTaskChannel:   make(chan taskmodel.IStuckTask),
 	}
 
 	return &taskResumer
@@ -52,11 +57,21 @@ func (tr *TaskResumer) ResumeProcessing() {
 }
 
 func (tr *TaskResumer) startProcessing() {
-	go tr.stuckTaskWorker()
+	tr.launchWorkers()
+	go tr.pollingWorker()
 }
 
-func (tr *TaskResumer) stuckTaskWorker() {
-	for range tr.pollingInterval.C {
+func (tr *TaskResumer) launchWorkers() {
+	concurrency := tr.taskProperties.GetTaskResumer().GetConcurrency()
+	for i := 0; i < concurrency; i++ {
+		go tr.handleStuckTaskWorker()
+		go tr.handleWaitingTaskWorker()
+	}
+}
+
+func (tr *TaskResumer) pollingWorker() {
+	pollingTicker := time.NewTicker(tr.taskProperties.GetTaskResumer().GetPollingInterval())
+	for range pollingTicker.C {
 		tr.logger.Debug("Polling stuck and waiting tasks")
 		if tr.paused.Load() {
 			tr.logger.Debug("Processing paused")
@@ -81,7 +96,20 @@ func (tr *TaskResumer) pickupWaitingTasks() {
 	}
 
 	for _, task := range stuckTasks.StuckTasks {
-		tr.handleWaitingTask(task)
+		tr.handleWaitingTaskChannel <- task
+	}
+}
+
+func (tr *TaskResumer) handleWaitingTaskWorker() {
+	for {
+		select {
+		case task := <-tr.handleWaitingTaskChannel:
+			if tr.paused.Load() {
+				tr.logger.Debug("Pausing waiting task processing")
+				return
+			}
+			tr.handleWaitingTask(task)
+		}
 	}
 }
 
@@ -122,6 +150,19 @@ func (tr *TaskResumer) pickupStuckTasks() {
 		}
 
 		for _, task := range stuckTasks.StuckTasks {
+			tr.handleStuckTaskChannel <- task
+		}
+	}
+}
+
+func (tr *TaskResumer) handleStuckTaskWorker() {
+	for {
+		select {
+		case task := <-tr.handleStuckTaskChannel:
+			if tr.paused.Load() {
+				tr.logger.Debug("Pausing stuck task processing")
+				return
+			}
 			tr.handleStuckTask(task)
 		}
 	}

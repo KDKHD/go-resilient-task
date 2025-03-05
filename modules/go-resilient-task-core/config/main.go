@@ -2,7 +2,6 @@ package config
 
 import (
 	"database/sql"
-	"time"
 
 	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/dao"
 	handlerregistry "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/handler_registry"
@@ -87,7 +86,7 @@ func WithDefaultTaskService() GoResilientTaskConfigOption {
 
 func WithKafkaTaskExecutionTrigger(kafkaClient *kgo.Client) GoResilientTaskConfigOption {
 	return func(config *GoResilientTaskConfig) {
-		config.taskExecutionTrigger = taskexecutiontrigger.NewKafkaTaskExecutionTrigger(config.requireTaskHandlerRegistry(), config.requireLogger(), kafkaClient, config.requireTaskExecutor(), config.requireTaskDao())
+		config.taskExecutionTrigger = taskexecutiontrigger.NewKafkaTaskExecutionTrigger(config.requireTaskHandlerRegistry(), config.requireLogger(), kafkaClient, config.requireTaskExecutor(), config.requireTaskDao(), config.requireTaskProperties())
 	}
 }
 
@@ -109,9 +108,9 @@ func WithTaskHandlerRegistry(taskHandlerRegistry handlerregistry.ITaskHandlerReg
 	}
 }
 
-func WithDefaultTaskResumer(pollingInterval time.Duration) GoResilientTaskConfigOption {
+func WithDefaultTaskResumer() GoResilientTaskConfigOption {
 	return func(config *GoResilientTaskConfig) {
-		config.taskResumer = taskresumer.NewTaskResumer(config.requireLogger(), config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireTaskExecutor(), pollingInterval, config.requireTaskHandlerRegistry())
+		config.taskResumer = taskresumer.NewTaskResumer(config.requireLogger(), config.requireTaskDao(), config.requireTaskExecutionTrigger(), config.requireTaskExecutor(), config.requireTaskHandlerRegistry(), config.requireTaskProperties())
 	}
 }
 

@@ -2,52 +2,24 @@ package main
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 
-	"github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/config"
 	concurrencypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/concurrency_policy"
-	handlerregistry "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/handler_registry"
 	processingpolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/processing_policy"
 	retrypolicy "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/retry_policy"
-	taskexecutor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_executor"
 	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_handler"
 	taskhandleradapter "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_handler_adapter"
 	taskprocessor "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_processor"
-	taskresumer "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_resumer"
 	taskservice "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_service"
-	taskexecutiontrigger "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/triggering/task_execution_trigger"
 	taskmodel "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task"
 	taskproperties "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/model/task_properties"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
-func NewLogger() *zap.Logger {
-	logger, _ := zap.NewDevelopment()
-	return logger
-}
-
-func NewResilientTaskConfiguration(logger *zap.Logger, postgresClient *sql.DB, kafkaClient *kgo.Client, taskProperties taskproperties.ITaskProperties) (handlerregistry.ITaskHandlerRegistry, taskexecutiontrigger.ITasksExecutionTriggerer, taskexecutor.ITaskExecutor, taskresumer.ITaskResumer, taskservice.ITasksService) {
-
-	configuration := config.NewGoResilientTaskConfig(
-		config.WithTaskProperties(taskProperties),
-		config.WithLogger(logger),
-		config.WithDefaultTaskRegistry(),
-		config.WithPostgresTaskDao(postgresClient),
-		config.WithDefaultTaskExecutor(),
-		config.WithKafkaTaskExecutionTrigger(kafkaClient),
-		config.WithDefaultTaskService(),
-		config.WithDefaultTaskResumer(time.Second*2),
-	)
-
-	return configuration.GetHandlerRegistry(), configuration.GetTaskExecutionTrigger(), configuration.GetTaskExecutor(), configuration.GetTaskResumer(), configuration.GetTaskService()
-}
-
-func PaymentInitiatedHandler(logger *zap.Logger, config *config.GoResilientTaskConfig) taskhandler.ITaskHandler {
+func PaymentInitiatedHandler(logger *zap.Logger, taskService taskservice.ITasksService) taskhandler.ITaskHandler {
 	return taskhandleradapter.
 		NewTaskHandlerAdapterBuilder(
 			func(task taskmodel.IBaseTask) bool {
@@ -58,7 +30,7 @@ func PaymentInitiatedHandler(logger *zap.Logger, config *config.GoResilientTaskC
 					logger.Debug("processing task payment initaiated", zap.String("task_data", task.GetData()))
 					// ... doing things ...
 					logger.Debug("Triggering task payment_processed", zap.String("task_data", task.GetData()))
-					config.GetTaskService().AddTask(taskservice.AddTaskRequest{Type: "payment_processed", TaskId: uuid.New(), Data: []byte(task.GetData()), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
+					taskService.AddTask(taskservice.AddTaskRequest{Type: "payment_processed", TaskId: uuid.New(), Data: []byte(task.GetData()), RunAfterTime: time.Now().UTC().Add(time.Second * 10), ExpectedQueueTime: time.Second * 120})
 					return taskprocessor.ProcessResult{
 						ResultCode: taskprocessor.DONE,
 					}, nil
@@ -114,19 +86,13 @@ func PaymentProcessedHandler(logger *zap.Logger) taskhandler.ITaskHandler {
 		Build()
 }
 
-func NewKgoClient(logger *zap.Logger) *kgo.Client {
-	host := "localhost"
-	port := "54944"
-
-	// Construct the Kafka bootstrap server address
-	bootstrapServer := fmt.Sprintf("%s:%s", host, port)
-
-	seeds := []string{bootstrapServer}
+func NewKgoClient(logger *zap.Logger, taskProperties taskproperties.ITaskProperties) *kgo.Client {
+	seeds := []string{taskProperties.GetKafka().GetBootstrapServers()}
 	kafkaClient, err := kgo.NewClient(
 		kgo.SeedBrokers(seeds...),
 		kgo.AllowAutoTopicCreation(),
-		kgo.ConsumerGroup("my-group-identifier12"),
-		kgo.ConsumeTopics("tasks"))
+		kgo.ConsumerGroup(taskProperties.GetKafka().GetKafkaConsumerGroupId()),
+		kgo.ConsumeTopics(taskProperties.GetKafka().GetKafkaTopicsNamespace()+"."+"tasks"))
 
 	if err != nil {
 		logger.Error("Failed to create Kafka client", zap.Error(err))
@@ -135,42 +101,25 @@ func NewKgoClient(logger *zap.Logger) *kgo.Client {
 	return kafkaClient
 }
 
-func NewPostgresClient(logger *zap.Logger) *sql.DB {
-	// Construct the connection string
+func NewPostgresClient(logger *zap.Logger) (*sql.DB, error) {
 	connectionString := "postgres://user:password@localhost:5432/public?sslmode=disable"
-
-	postgresClient, err := sql.Open("pgx", connectionString)
-	if err != nil {
-		logger.Error("Failed to create Postgres client", zap.Error(err))
-		return nil
-	}
-
-	return postgresClient
+	return sql.Open("pgx", connectionString)
 }
 
 func NewTaskProperties() taskproperties.ITaskProperties {
-	return taskproperties.NewTaskProperties(taskproperties.WithTaskStuckTimeout(time.Minute * 5))
-}
-
-type LaunchResilientTaskFxInvokeParams struct {
-	fx.In
-	HandlerRegistry      handlerregistry.ITaskHandlerRegistry
-	TaskExecutor         taskexecutor.ITaskExecutor
-	TaskResumer          taskresumer.ITaskResumer
-	TaskExecutionTrigger taskexecutiontrigger.ITasksExecutionTriggerer
-	Handlers             []taskhandler.ITaskHandler `group:"handlers"`
-	Logger               *zap.Logger
-}
-
-func InitiateResilientTaskFx() fx.Option {
-	return fx.Invoke(func(params LaunchResilientTaskFxInvokeParams) {
-		params.HandlerRegistry.SetTaskHandlers(params.Handlers)
-		params.TaskExecutor.StartProcessing()
-		params.TaskResumer.ResumeProcessing()
-		err := params.TaskExecutionTrigger.StartTasksProcessing()
-
-		if err != nil {
-			params.Logger.Error("Failed to start task processing", zap.Error(err))
-		}
-	})
+	return taskproperties.NewTaskProperties(
+		taskproperties.WithTaskStuckTimeout(time.Minute*20),
+		taskproperties.WithTaskResumer(
+			taskproperties.NewTaskResumerProperties(
+				taskproperties.WithBatchSize(1000),
+				taskproperties.WithPollingInterval(time.Second*2),
+				taskproperties.WithConcurrency(10),
+			)),
+		taskproperties.WithKafka(
+			taskproperties.NewKafkaProperties(
+				taskproperties.WithBootstrapServers("localhost:29092"),
+				taskproperties.WithKafkaTopicsNamespace("my-group-identifier"),
+				taskproperties.WithKafkaConsumerGroupId("tasks"),
+			)),
+	)
 }

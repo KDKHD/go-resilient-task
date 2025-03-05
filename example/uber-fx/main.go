@@ -1,29 +1,24 @@
 package main
 
 import (
-	taskhandler "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-core/pkg/handler/task_handler"
+	autoconfiguration "github.com/KDKHD/go-resilient-task/modules/go-resilient-task-uber-fx/auto-configuration"
 	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 func main() {
 	fx.New(
+		autoconfiguration.Provider(),
+		fx.Decorate(func() (*zap.Logger, error) {
+			return zap.NewDevelopment()
+		}),
 		fx.Provide(
-			NewLogger,
+			autoconfiguration.AsHandler(PaymentInitiatedHandler),
+			autoconfiguration.AsHandler(PaymentProcessedHandler),
 			NewKgoClient,
 			NewPostgresClient,
 			NewTaskProperties,
-			NewResilientTaskConfiguration,
-			AsHandler(PaymentInitiatedHandler),
-			AsHandler(PaymentProcessedHandler),
 		),
-		InitiateResilientTaskFx(),
+		autoconfiguration.InitiateResilientTaskFx(),
 	).Run()
-}
-
-func AsHandler(f any) any {
-	return fx.Annotate(
-		f,
-		fx.As(new(taskhandler.ITaskHandler)),
-		fx.ResultTags(`group:"handlers"`),
-	)
 }

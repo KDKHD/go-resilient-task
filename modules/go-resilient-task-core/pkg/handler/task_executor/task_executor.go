@@ -38,7 +38,7 @@ type TaskExecutor struct {
 	workerPoolProperties []*WorkerPoolProperties
 }
 
-func NewTaskExecutor(taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, taskDao dao.ITaskDao, logger *zap.Logger) *TaskExecutor {
+func NewTaskExecutor(taskHandlerRegistry handlerregistry.ITaskHandlerRegistry, taskDao dao.ITaskDao, logger *zap.Logger) ITaskExecutor {
 	taskExecutor := &TaskExecutor{taskHandlerRegistry: taskHandlerRegistry, logger: logger, taskDao: taskDao, workerWg: &sync.WaitGroup{}}
 
 	return taskExecutor

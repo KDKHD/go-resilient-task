@@ -100,7 +100,7 @@ type PostgresTaskDao struct {
 	logger                          *zap.Logger
 }
 
-func NewPostgresTaskDao(db *sql.DB, logger *zap.Logger) (*PostgresTaskDao, error) {
+func NewPostgresTaskDao(db *sql.DB, logger *zap.Logger) (ITaskDao, error) {
 	insertTaskStmt, err := db.Prepare(insertTaskStmt)
 	if err != nil {
 		return &PostgresTaskDao{}, err
@@ -323,7 +323,7 @@ func (ptd PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask, maxPr
 	now := time.Now().UTC()
 
 	result, err := ptd.grabForProcessingWithStatusStmt.Exec(
-		taskmodel.PROCESSING.String(), // status
+		taskmodel.PROCESSING.String(), // new status
 		now,                           // processing_start_time
 		maxProcessingEndTime,          // next_event_time
 		now,                           // state_time
@@ -331,7 +331,7 @@ func (ptd PostgresTaskDao) GrabForProcessing(baseTask taskmodel.IBaseTask, maxPr
 		baseTask.GetVersion()+1,       // new version
 		baseTask.GetId(),              // task_id
 		baseTask.GetVersion(),         // version
-		taskmodel.SUBMITTED.String(),  // status
+		taskmodel.SUBMITTED.String(),  // where status is
 	)
 
 	if err != nil {
@@ -420,6 +420,7 @@ func (ptd PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, error) {
 	var dataFormat sql.NullInt32
 	var data sql.NullString
 	var statusString string
+	var subType sql.NullString
 
 	if rows.Next() {
 		err := rows.Scan(
@@ -428,7 +429,7 @@ func (ptd PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, error) {
 			&task.Type,
 			&statusString,
 			&task.Priority,
-			&task.SubType,
+			&subType,
 			&task.ProcessingTriesCount,
 			&dataFormat,
 			&data,
@@ -447,6 +448,7 @@ func (ptd PostgresTaskDao) GetTask(taskId uuid.UUID) (taskmodel.ITask, error) {
 		}
 
 		task.Status = taskStatus
+		task.SubType = subType.String
 
 	} else {
 		return nil, sql.ErrNoRows
