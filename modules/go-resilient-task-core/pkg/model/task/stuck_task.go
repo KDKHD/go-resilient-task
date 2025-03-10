@@ -24,11 +24,11 @@ func NewStuckTask(id uuid.UUID, version int, taskType string, priority int, stat
 	}
 }
 
-func (t StuckTask) GetStatus() TaskStatus {
-	return t.Status
+func (st StuckTask) GetStatus() TaskStatus {
+	return st.Status
 }
 
-func (t *StuckTask) SetStatus(status TaskStatus) IBaseTask {
-	t.Status = status
-	return t
+func (st *StuckTask) SetStatus(status TaskStatus) IBaseTask {
+	st.Status = status
+	return st
 }
